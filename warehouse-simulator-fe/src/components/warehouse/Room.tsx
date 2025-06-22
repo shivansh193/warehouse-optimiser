@@ -4,9 +4,8 @@ import ShelfDetailView from './Shelf'; // Path from updates file
 import type { MasterItem as MasterItemType, ShelfStoredItem, ShelfType, GridCellDisplayData as GridCellDisplayDataType } from '../../interfaces/types'; // Renamed to avoid conflict with local const
 import { Loader2 } from 'lucide-react';
 import OrderFulfillmentView from '../fullfillment/OrderFulfillmentView';
-
 import PathInstructionsPanel from '../fullfillment/PathInstructionsPanel'; // IMPORT THE NEW PANEL
-
+import WarehouseFloorGrid from './warehouseFloorGrid';
 // --- TYPE DEFINITIONS (from interfaces/types.ts or define here if not shared) ---
 // Assuming MasterItem, ShelfStoredItem, ShelfType, GridCellDisplayData are defined correctly in '../../interfaces/types'
 // Explicitly defining Order-related types as per the updates file
@@ -691,22 +690,103 @@ const RoomLayout = () => {
   return (
     <div className="min-h-screen bg-gray-900 p-2 sm:p-4 flex flex-col xl:flex-row gap-4 sm:gap-6 overflow-hidden">
       {/* Col 1: Item Catalog & Shelf Details */}
-      <div className="xl:w-80 bg-gray-800 rounded-lg shadow-lg p-3 flex flex-col gap-4 order-first xl:order-none self-start shrink-0">
-        <div>
-          <h3 className="text-lg font-bold text-white mb-2">Item Catalog</h3>
-          <div className="grid grid-cols-2 gap-2">
+       
+      {/* Col 1: Item Catalog */}
+      <div className="xl:w-60 bg-gray-800 rounded-lg shadow-lg p-3 space-y-2 order-first xl:order-none self-start shrink-0">
+        <h3 className="text-lg font-bold text-white mb-2">Item Catalog</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-2"> {/* Adjusted grid for catalog items */}
             {MASTER_ITEMS_CATALOG.map(masterItem => (
                 <div key={masterItem.id} onClick={() => handleMasterItemSelect(masterItem.id)}
-                    className={`p-2 rounded-md cursor-pointer flex items-center gap-2 transition-all duration-200 ${selectedMasterItemId === masterItem.id ? 'ring-2 ring-cyan-400 bg-gray-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
-                    <div className={`w-4 h-4 rounded-sm ${masterItem.color}`}></div>
-                    <span className="text-white text-sm font-medium truncate">{masterItem.name}</span>
+                    className={`p-2 rounded-md cursor-pointer flex items-center gap-2 transition-all duration-200 ${selectedMasterItemId === masterItem.id ? 'ring-2 ring-cyan-400 bg-slate-600' : 'bg-slate-700 hover:bg-slate-600'}`}>
+                    <div className={`w-4 h-4 rounded-sm ${masterItem.color} shrink-0`}></div>
+                    <span className="text-white text-xs sm:text-sm font-medium truncate">{masterItem.name}</span>
                 </div>
             ))}
-          </div>
-          {currentActionError && <p className="text-red-400 text-xs mt-2">{currentActionError}</p>}
         </div>
+        {selectedMasterItemId && ( 
+            <div className="mt-3 text-xs text-yellow-300 p-1.5 bg-yellow-700/30 rounded"> 
+                Selected: {MASTER_ITEMS_CATALOG.find(i => i.id === selectedMasterItemId)?.name}
+                <br />Click shelf face to add.
+            </div> 
+        )}
+         {currentActionError && <p className="text-red-400 text-xs mt-2 p-1.5 bg-red-700/30 rounded">{currentActionError}</p>} {/* Moved currentActionError here */}
       </div>
 
+      {/* Col 2: Main Content Area (Warehouse Header & Grid) -- THIS WAS MISSING */}
+      <div className="flex-1 flex flex-col min-w-0 order-last xl:order-none"> {/* min-w-0 is important for flex children */}
+        {/* Header Controls for Warehouse */}
+        <div className="bg-gray-800 rounded-lg shadow-lg p-4 mb-4 sm:mb-6 shrink-0">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <h2 className="text-xl font-bold text-white"> {shopName || 'Warehouse Layout'}</h2>
+            <div className="flex items-center gap-2 text-sm text-white">
+                <span>W:</span> 
+                <input 
+                    type="number" value={roomWidth} 
+                    onChange={e => setRoomWidth(Math.max(3, parseInt(e.target.value) || DEFAULT_ROOM_WIDTH_UNITS))} 
+                    className="w-16 p-1 bg-slate-700 border border-slate-600 rounded focus:ring-cyan-500 focus:border-cyan-500 outline-none" />
+                <span>H:</span> 
+                <input 
+                    type="number" value={roomHeight} 
+                    onChange={e => setRoomHeight(Math.max(3, parseInt(e.target.value) || DEFAULT_ROOM_HEIGHT_UNITS))} 
+                    className="w-16 p-1 bg-slate-700 border border-slate-600 rounded focus:ring-cyan-500 focus:border-cyan-500 outline-none" />
+            </div>
+            <div className="flex items-center gap-3">
+                <button onClick={removeLogicalShelfRow} className="btn-danger text-xs px-2.5 py-1.5" disabled={!canRemoveShelfRow}>Remove Row ({logicalShelvesPerBlockRow})</button>
+                <button onClick={addLogicalShelfRow} className="btn-success text-xs px-2.5 py-1.5" disabled={!canAddShelfRow}>Add Row ({logicalShelvesPerBlockRow})</button>
+            </div>
+          </div>
+          {/* Error for add/remove shelf rows can go here if 'error' state is used for that */}
+          {/* currentActionError is for item add/update, better placed in Col 1 or Col 3 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm text-gray-300">
+            <div>
+              {/* <div className="font-semibold">Logical Shelves</div>
+              <div className="text-xl font-bold text-white">{totalLogicalShelvesCount}</div> */}
+            </div>
+            <div>
+              <div className="font-semibold">Total Items Stored</div>
+              <div className="text-xl font-bold text-white">{totalStoredItemsCount}</div> {/* USE CORRECT CONST */}
+            </div>
+            <div>
+              <div className="font-semibold">Overall Capacity</div>
+              <div className="text-xl font-bold text-white">
+                {maxOverallCapacityVal > 0 ? `${Math.round((totalStoredItemsCount / maxOverallCapacityVal) * 100)}%` : '0%'} {/* USE CORRECT CONST */}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Warehouse Floor View */}
+        <div className="flex-1 bg-gray-800 rounded-lg shadow-lg p-1 sm:p-2 md:p-4 flex items-center justify-center overflow-auto min-h-[40vh] sm:min-h-[50vh] relative"> {/* min-h to give it space */}
+          <div 
+            className="transform scale-[0.75] sm:scale-[0.85] md:scale-[1]" // Adjust scale as needed
+            style={{ 
+                width: `${roomWidth * 3}rem`, // Adjust multiplier for desired cell size
+                height: `${roomHeight * 3}rem`,
+                minWidth: '250px', 
+                minHeight: '250px'
+            }}
+          >
+            {(gridDisplayCells && gridDisplayCells.length > 0 && gridDisplayCells[0].length > 0) ? (
+                <WarehouseFloorGrid
+                    gridCells={gridDisplayCells}
+                    logicalShelvesData={logicalShelves}
+                    selectedLogicalShelfId={selectedLogicalShelfId}
+                    hoveredCellId={hoveredCellId}
+                    onShelfSlotClick={handleLogicalShelfClick}
+                    onCellClick={handleCellClick}
+                    onCellMouseEnter={setHoveredCellId}
+                    onCellMouseLeave={() => setHoveredCellId(null)}
+                    entryPoint={ currentPathData?.metrics?.entryPointForPath || {x:0, y: Math.floor(roomHeight/2)} }
+                    exitPoint={ currentPathData?.metrics?.exitPointForPath || {x:roomWidth-1, y: Math.floor(roomHeight/2)} }
+                />
+            ) : (
+                <div className="flex items-center justify-center h-full">
+                    <p className="text-slate-400">Layout generating or empty. Adjust dimensions or add shelves.</p>
+                </div>
+            )}
+          </div>
+        </div>
+      </div> {/* End of Col 2 */}
       {/* Col 3: Order Fulfillment & Shelf Details (JSX from updates file) */}
       <div className="xl:w-96 flex flex-col gap-4 order-last xl:order-none self-start shrink-0 mt-4 xl:mt-0">
       <OrderFulfillmentView
