@@ -1,7 +1,27 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, PackagePlus, CheckCircle, AlertCircle, PlayCircle, ListOrdered, Settings2, Bot, ShoppingCart } from 'lucide-react';
-import type { MasterItem, ShelfType, OrderItem, Order } from '../../interfaces/types'; // Adjust path
+import type { MasterItem, ShelfType } from '../../interfaces/types'; // Adjust path
 
+export interface OrderItem {
+  masterItemId: string;
+  quantityOrdered: number;
+  quantityPicked?: number;
+  status?: 'pending' | 'available' | 'unavailable' | 'partially_available'; // Status for individual line item
+  stockAvailable?: number; // How many are actually in stock
+}
+
+export interface Order {
+  _id?: string; // From MongoDB or similar
+  orderNumber: string;
+  items: OrderItem[];
+  status: 'pending_pick' | 'picking' | 'picked_partial' | 'picked_full' | 'fulfilled' | 'cancelled';
+  customer?: { // Example, might have more customer details
+    name: string;
+    address?: string;
+  };
+  createdAt?: Date;
+  updatedAt?: Date;
+}
 // --- API Service Functions (These should ideally be in a shared services/api.ts file) ---
 async function generateRandomOrdersAPI(shopId: string, count: number): Promise<Order[]> {
   const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
@@ -187,7 +207,7 @@ const OrderFulfillmentView: React.FC<OrderFulfillmentViewProps> = ({
     const picklistMap = new Map<string, { quantity: number, locations: {shelfId: number, x:number, y:number, facing: 'N'|'S'|'E'|'W'}[] }>();
     
     ordersToFulfill.forEach(order => {
-      order.items.forEach(item => {
+      order.items.forEach((item: OrderItem) => {
         if (item.status === 'unavailable') return;
         let quantityToPick = item.quantityOrdered;
         if (item.status === 'partially_available' && typeof item.stockAvailable === 'number') {
@@ -317,12 +337,12 @@ const OrderFulfillmentView: React.FC<OrderFulfillmentViewProps> = ({
                     </div>
                     </div>
                     <ul className="space-y-0.5 text-xs pl-6">
-                    {order.items.map((item, idx) => (
+                    {order.items.map((item: OrderItem, idx: number) => (
                         <li key={`${order._id || order.orderNumber}-item-${idx}`} className="flex items-center justify-between text-slate-300">
                             <span className="truncate max-w-[150px]" title={`${getItemName(item.masterItemId)} x ${item.quantityOrdered}`}>{getItemName(item.masterItemId)} x {item.quantityOrdered}</span>
-                            {item.status === 'available' && <CheckCircle className="w-3 h-3 text-green-400 shrink-0" title="In Stock"/>}
-                            {item.status === 'partially_available' && <AlertCircle className="w-3 h-3 text-yellow-400 shrink-0" title={`Only ${item.stockAvailable || 0} in stock`}/>}
-                            {item.status === 'unavailable' && <AlertCircle className="w-3 h-3 text-red-400 shrink-0" title="Out of stock"/>}
+                            {item.status === 'available' && <CheckCircle className="w-3 h-3 text-green-400 shrink-0"/>}
+                            {item.status === 'partially_available' && <AlertCircle className="w-3 h-3 text-yellow-400 shrink-0"/>}
+                            {item.status === 'unavailable' && <AlertCircle className="w-3 h-3 text-red-400 shrink-0"/>}
                         </li>
                     ))}
                     </ul>

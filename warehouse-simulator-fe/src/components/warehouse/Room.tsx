@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ShelfDetailView from './Shelf'; // Path from updates file
-import WarehouseFloorGrid from './warehouseFloorGrid'; // Path from updates file
 import type { MasterItem as MasterItemType, ShelfStoredItem, ShelfType, GridCellDisplayData as GridCellDisplayDataType } from '../../interfaces/types'; // Renamed to avoid conflict with local const
-import { Loader2, PackagePlus, CheckCircle, AlertCircle, PlayCircle, ListOrdered, Settings2, Bot, ShoppingCart } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import OrderFulfillmentView from '../fullfillment/OrderFulfillmentView';
 
 import PathInstructionsPanel from '../fullfillment/PathInstructionsPanel'; // IMPORT THE NEW PANEL
@@ -277,11 +276,12 @@ const RoomLayout = () => {
   const [hoveredCellId, setHoveredCellId] = useState<string | null>(null);
   const [roomWidth, setRoomWidth] = useState(DEFAULT_ROOM_WIDTH_UNITS);
   const [roomHeight, setRoomHeight] = useState(DEFAULT_ROOM_HEIGHT_UNITS);
-  const [currentPathData, setCurrentPathData] = useState<{
-    optimizedPath: { x: number; y: number }[];
-    unoptimizedPath: { x: number; y: number }[];
-    // Metrics will be stored separately to avoid deeply nested state in currentPathData if not needed elsewhere
-} | null>(null);
+  const [currentPathData, setCurrentPathData] = useState<{ 
+    optimizedPath: { x: number; y: number }[]; 
+    unoptimizedPath: { x: number; y: number }[]; 
+    metrics: any; // Consolidating metrics here
+  } | null>(null);
+
   // --- Order Fulfillment State (Integrated from OrderFulfillmentView) ---
   const [isShopOpenForOrders, setIsShopOpenForOrders] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -289,8 +289,6 @@ const RoomLayout = () => {
   const [isOrderLoading, setIsOrderLoading] = useState(false); // Loading for order actions
   const [orderError, setOrderError] = useState<string | null>(null); // Errors for order actions
 
-  
-  const [optimizationMetrics, setOptimizationMetrics] = useState<any | null>(null); // Or a more specific type for metrics
   // --- useEffect for Initial Shop Data Load ---
   useEffect(() => {
     if (!shopIdentifier) { 
@@ -390,6 +388,19 @@ const RoomLayout = () => {
     });
   };
 
+  const handleDisplayPathOnGrid = useCallback((pathDataFromApi: { 
+    optimizedPath: {x:number,y:number}[], 
+    unoptimizedPath: {x:number,y:number}[],
+    metrics: any
+  }) => {
+    setCurrentPathData(pathDataFromApi);
+    if (pathDataFromApi.metrics?.orderedPickLocationsWithDetails) {
+      setDetailedPickSequence(pathDataFromApi.metrics.orderedPickLocationsWithDetails);
+    } else {
+      setDetailedPickSequence([]);
+    }
+  }, []);
+
   const handleToggleOrderSelection = (orderIdToToggle: string) => {
     setSelectedOrderIds(prev =>
       prev.includes(orderIdToToggle) ? prev.filter(id => id !== orderIdToToggle) : [...prev, orderIdToToggle]
@@ -481,7 +492,7 @@ const RoomLayout = () => {
       setSelectedOrderIds([]); // Clear selection
     } catch (err: any) { setOrderError(err.message); } 
     finally { setIsOrderLoading(false); }
-  },[shopIdentifier, selectedOrderIds, orders, logicalShelves, navigate, updateOrderStatusAPI, optimizeRouteAPI]);
+  },[shopIdentifier, selectedOrderIds, orders, logicalShelves, navigate, updateOrderStatusAPI, optimizeRouteAPI, handleDisplayPathOnGrid]);
 
   const handleMarkOrderFulfilled = async (orderIdToMark: string) => {
     if (!shopIdentifier || !orderIdToMark) return;
@@ -585,7 +596,7 @@ const RoomLayout = () => {
     }));
     // Re-generate layout with new shelves to get their coordinates
     const combinedShelves = [...logicalShelves, ...newShelvesArray];
-    const layoutResult = generateBackToBackLayout(combinedShelves, roomWidth, roomHeight, handleLogicalShelfClick, handleCellClick, setHoveredCellId, () => setHoveredCellId(null));
+    const layoutResult = generateBackToBackLayout(combinedShelves, roomWidth, roomHeight);
     setLogicalShelves(layoutResult.shelvesWithCoordinates);
   };
 
@@ -599,7 +610,7 @@ const RoomLayout = () => {
     const shelvesToRemoveCount = Math.min(logicalShelvesPerBlockRow, logicalShelves.length);
     const remainingShelves = logicalShelves.slice(0, logicalShelves.length - shelvesToRemoveCount);
     // Re-generate layout
-    const layoutResult = generateBackToBackLayout(remainingShelves, roomWidth, roomHeight, handleLogicalShelfClick, handleCellClick, setHoveredCellId, () => setHoveredCellId(null));
+    const layoutResult = generateBackToBackLayout(remainingShelves, roomWidth, roomHeight);
     setLogicalShelves(layoutResult.shelvesWithCoordinates);
   };
   
@@ -617,43 +628,17 @@ const RoomLayout = () => {
     return logicalShelves.length > 0 && logicalShelvesPerBlockRow > 0;
   }, [logicalShelves.length, logicalShelvesPerBlockRow]);
 
-  const handleDisplayPathOnGrid = useCallback((pathDataFromApi: { 
-    optimizedPath: {x:number,y:number}[], 
-    unoptimizedPath: {x:number,y:number}[],
-    metrics: any // This should include timeSavedEstimate AND pickSequenceSteps
-}) => {
-    setCurrentPathData({ 
-        optimizedPath: pathDataFromApi.optimizedPath, 
-        unoptimizedPath: pathDataFromApi.unoptimizedPath 
-    });
-    setOptimizationMetrics(pathDataFromApi.metrics); // << SET METRICS HERE
-    setDetailedPickSequence(pathDataFromApi.metrics?.pickSequenceSteps || []); // << SET PICK SEQUENCE HERE
-}, []);
-
   const gridDisplayCells = useMemo(() => {
-    // Pass actual handlers to generateBackToBackLayout for the grid cells
-    const layoutResult = generateBackToBackLayout(
-        logicalShelves, roomWidth, roomHeight,
-    );
-    
-    
-    let gridToDisplay = layoutResult.gridCells;
-    if (currentPathData && gridToDisplay.length > 0 && gridToDisplay[0].length > 0) {
-         // Updated param name
+    let gridToDisplay = generateBackToBackLayout(
+        logicalShelves, roomWidth, roomHeight
+    ).gridCells;
 
-        const newGridWithPaths = gridToDisplay.map(row => row.map(cell => ({
-            ...cell, 
-            isOptimalPath: false, 
-            isUnoptimizedPath: false,
-            isStart: false, 
-            isEnd: false,
-            pathSequence: undefined, // Reset sequence
-            isPickLocation: false 
-          })));
-          const markPath = (
+    if (currentPathData) {
+        const newGridWithPaths = gridToDisplay.map(row => row.map(cell => ({ ...cell, isOptimalPath: false, isUnoptimizedPath: false, pathSequence: undefined, isStart: false, isEnd: false, isPickLocation: false })));
+        
+        const markPath = (
             pathCoords: {x:number, y:number}[], 
-            pathPropertyKey: 'isOptimalPath' | 'isUnoptimizedPath',
-            // pickLocationsCoords: {x:number, y:number}[] // Coords of actual pick stops
+            pathPropertyKey: 'isOptimalPath' | 'isUnoptimizedPath'
         ) => {
             let sequenceCounter = 1;
             pathCoords.forEach((coord, index) => {
@@ -663,13 +648,8 @@ const RoomLayout = () => {
                     if (pathPropertyKey === 'isOptimalPath') cellToUpdate.isOptimalPath = true;
                     else if (pathPropertyKey === 'isUnoptimizedPath') cellToUpdate.isUnoptimizedPath = true;
                     
-                    cellToUpdate.pathSequence = sequenceCounter++;
+                    (cellToUpdate as GridCellDisplayDataType).pathSequence = sequenceCounter++;
 
-                    // Determine if this coordinate is an actual pick location.
-                    // This requires knowing the coordinates of the TSP nodes (shelf access points).
-                    // The `currentPathData.metrics` or a separate part of the response from `optimizeRouteAPI`
-                    // should provide the ordered list of pick locations (their access point coords)
-                    // that the optimized path visits.
                     if (pathPropertyKey === 'isOptimalPath' && currentPathData.metrics?.orderedPickLocations) {
                         const isPickStop = (currentPathData.metrics.orderedPickLocations as {x:number,y:number}[]).some(
                             pickCoord => pickCoord.x === coord.x && pickCoord.y === coord.y
@@ -685,7 +665,6 @@ const RoomLayout = () => {
             });
         };
 
-        // Assuming metrics.orderedPickLocations is an array of {x,y} for actual pick stops in sequence
         if(currentPathData.unoptimizedPath && currentPathData.unoptimizedPath.length > 0) {
             markPath(currentPathData.unoptimizedPath, 'isUnoptimizedPath');
         }
@@ -696,74 +675,35 @@ const RoomLayout = () => {
     }
     return gridToDisplay;
 
-  }, [logicalShelves, roomWidth, roomHeight, currentPathData, handleLogicalShelfClick, handleCellClick]);
-  const selectedShelfInstance = selectedLogicalShelfId !== null ? logicalShelves.find(s => s.id === selectedLogicalShelfId) : null;
+  }, [logicalShelves, roomWidth, roomHeight, currentPathData]);
 
-  // --- Conditional Rendering for Loading/Error ---
-  if (isLoading && !pageError) { // Show loader only if no page error yet
-    return ( <div className="min-h-screen w-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4"> <Loader2 className="w-12 h-12 text-cyan-400 animate-spin mb-4" /> <p className="text-xl">Loading Warehouse...</p> </div> );
+  const selectedShelfInstance = selectedLogicalShelfId !== null ? logicalShelves.find(s => s.id === selectedLogicalShelfId) : null;
+  const totalStoredItemsCount = useMemo(() => logicalShelves.reduce((sum, shelf) => sum + shelf.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0), [logicalShelves]);
+  const maxOverallCapacityVal = useMemo(() => logicalShelves.reduce((sum, shelf) => sum + (shelf.maxCapacityPerShelf || MAX_ITEMS_PER_LOGICAL_SHELF), 0), [logicalShelves]);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-screen bg-gray-900 text-white"><Loader2 className="h-8 w-8 animate-spin" /> Loading Warehouse...</div>;
   }
   if (pageError) {
-    return ( <div className="min-h-screen w-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 text-center"> <h2 className="text-2xl text-red-400 mb-4">Error Loading Warehouse</h2> <p className="mb-6">{pageError}</p> <button onClick={() => navigate('/create-shop')} className="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-900 rounded-lg font-semibold"> Create New Shop </button> </div> );
+    return <div className="flex items-center justify-center h-screen bg-gray-900 text-red-500">{pageError}</div>;
   }
-
-  // --- Main JSX ---
-  const totalLogicalShelvesCount = logicalShelves.length;
-  const totalStoredItemsCount = logicalShelves.reduce((sum, shelf) => sum + shelf.items.reduce((itemSum, item) => itemSum + item.quantity, 0),0);
-  const maxOverallCapacityVal = totalLogicalShelvesCount * MAX_ITEMS_PER_LOGICAL_SHELF; // As per updates file
 
   return (
     <div className="min-h-screen bg-gray-900 p-2 sm:p-4 flex flex-col xl:flex-row gap-4 sm:gap-6 overflow-hidden">
-      {/* Col 1: Item Catalog */}
-      <div className="xl:w-60 bg-gray-800 rounded-lg shadow-lg p-3 space-y-2 order-first xl:order-none self-start shrink-0">
-        <h3 className="text-lg font-bold text-white mb-2">Item Catalog</h3>
-        {MASTER_ITEMS_CATALOG.map(masterItem => (
-            <div key={masterItem.id} onClick={() => handleMasterItemSelect(masterItem.id)}
-                className={`p-2 rounded-md cursor-pointer border-2 transition-all ${masterItem.color} ${selectedMasterItemId === masterItem.id ? 'border-white ring-2 ring-offset-1 ring-offset-gray-800 ring-white' : 'border-transparent hover:border-gray-500'}`}>
-                <div className="font-semibold text-white text-center text-sm">{masterItem.name}</div>
-                <div className="text-xs text-gray-300 text-center">{masterItem.id}</div>
-            </div>
-        ))}
-        {selectedMasterItemId && ( <div className="mt-4 text-sm text-yellow-400 p-2 bg-yellow-800 bg-opacity-70 rounded"> Selected: {MASTER_ITEMS_CATALOG.find(i => i.id === selectedMasterItemId)?.name} <br />Click on a shelf face to add. </div> )}
-      </div>
-
-      {/* Col 2: Main Content (Header, Warehouse Grid) */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="bg-gray-800 rounded-lg shadow-lg p-4 mb-4 shrink-0">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-            <h2 className="text-xl font-bold text-white"> {shopName || 'Warehouse Layout'}</h2>
-            <div className="flex items-center gap-2 text-sm text-white">
-                <span>W:</span> <input type="number" value={roomWidth} onChange={e => setRoomWidth(Math.max(3, parseInt(e.target.value) || DEFAULT_ROOM_WIDTH_UNITS))} className="w-16 p-1 bg-gray-700 border border-gray-600 rounded" />
-                <span>H:</span> <input type="number" value={roomHeight} onChange={e => setRoomHeight(Math.max(3, parseInt(e.target.value) || DEFAULT_ROOM_HEIGHT_UNITS))} className="w-16 p-1 bg-gray-700 border border-gray-600 rounded" />
-            </div>
-            <div className="flex items-center gap-3">
-                <button onClick={removeLogicalShelfRow} className="btn-danger text-sm px-3 py-1.5" disabled={!canRemoveShelfRow}>Remove Row ({logicalShelvesPerBlockRow})</button>
-                <button onClick={addLogicalShelfRow} className="btn-success text-sm px-3 py-1.5" disabled={!canAddShelfRow}>Add Row ({logicalShelvesPerBlockRow})</button>
-            </div>
+      {/* Col 1: Item Catalog & Shelf Details */}
+      <div className="xl:w-80 bg-gray-800 rounded-lg shadow-lg p-3 flex flex-col gap-4 order-first xl:order-none self-start shrink-0">
+        <div>
+          <h3 className="text-lg font-bold text-white mb-2">Item Catalog</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {MASTER_ITEMS_CATALOG.map(masterItem => (
+                <div key={masterItem.id} onClick={() => handleMasterItemSelect(masterItem.id)}
+                    className={`p-2 rounded-md cursor-pointer flex items-center gap-2 transition-all duration-200 ${selectedMasterItemId === masterItem.id ? 'ring-2 ring-cyan-400 bg-gray-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
+                    <div className={`w-4 h-4 rounded-sm ${masterItem.color}`}></div>
+                    <span className="text-white text-sm font-medium truncate">{masterItem.name}</span>
+                </div>
+            ))}
           </div>
-          {currentActionError && <div className="text-red-400 text-sm mb-2 p-2 bg-red-900/50 rounded">{currentActionError}</div>}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm text-gray-300">
-            <div><div className="font-semibold">Logical Shelves</div><div className="text-xl font-bold text-white">{totalLogicalShelvesCount}</div></div>
-            <div><div className="font-semibold">Total Items Stored</div><div className="text-xl font-bold text-white">{totalStoredItemsCount}</div></div>
-            <div><div className="font-semibold">Overall Capacity</div><div className="text-xl font-bold text-white">{maxOverallCapacityVal > 0 ? `${Math.round((totalStoredItemsCount / maxOverallCapacityVal) * 100)}%` : '0%'}</div></div>
-          </div>
-        </div>
-        <div className="flex-1 bg-gray-800 rounded-lg shadow-lg p-1 sm:p-2 md:p-4 flex items-center justify-center overflow-auto min-h-[40vh] sm:min-h-[50vh]">
-          <div className="transform scale-[0.75] sm:scale-[0.85] md:scale-[1]" style={{ width: `${roomWidth * 3}rem`, height: `${roomHeight * 3}rem`, minWidth: '250px', minHeight: '250px'}}> {/* Adjusted multiplier for cell size */}
-            {(gridDisplayCells && gridDisplayCells.length > 0 && gridDisplayCells[0].length > 0) ? (
-                <WarehouseFloorGrid
-                    gridCells={gridDisplayCells}
-                    logicalShelvesData={logicalShelves} // Pass the shelves with coordinate data
-                    selectedLogicalShelfId={selectedLogicalShelfId}
-                    hoveredCellId={hoveredCellId}
-                    // Callbacks are now part of gridCell definition via generateBackToBackLayout
-                    onShelfSlotClick={handleLogicalShelfClick}
-                    onCellClick={handleCellClick}
-                    onCellMouseEnter={setHoveredCellId}
-                    onCellMouseLeave={() => setHoveredCellId(null)}
-                />
-            ) : <p className="text-slate-400">Layout not available or empty. Adjust room dimensions or add shelves.</p>}
-          </div>
+          {currentActionError && <p className="text-red-400 text-xs mt-2">{currentActionError}</p>}
         </div>
       </div>
 
@@ -776,10 +716,10 @@ const RoomLayout = () => {
                     onDisplayPath={handleDisplayPathOnGrid}
                 />
   {/* NEW: Path Instructions Panel - Render when path data is available */}
-  {currentPathData && optimizationMetrics && (
+  {currentPathData && currentPathData.metrics && (
                     <PathInstructionsPanel 
                         pickSequenceSteps={detailedPickSequence}
-                        metrics={optimizationMetrics}
+                        metrics={currentPathData.metrics}
                         masterItems={MASTER_ITEMS_CATALOG}
                         startPoint={currentPathData.metrics?.entryPointForPath || {x:0, y: Math.floor(roomHeight/2)}} // Get from metrics or default
                         endPoint={currentPathData.metrics?.exitPointForPath || {x:roomWidth-1, y: Math.floor(roomHeight/2)}}
@@ -807,38 +747,3 @@ const RoomLayout = () => {
 };
 export default RoomLayout;
 
-// Global CSS (e.g., in index.css or via Tailwind plugin)
-/*
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer components {
-  .btn-primary { @apply bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-md px-4 py-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed; }
-  .btn-success { @apply bg-green-600 hover:bg-green-500 text-white font-medium rounded-md transition-colors; }
-  .btn-danger { @apply bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
-  
-  // Basic Scrollbar styling for Webkit browsers
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  .scrollbar-thumb-slate-600::-webkit-scrollbar-thumb {
-    @apply bg-slate-600 rounded-full;
-    border: 2px solid transparent; // Optional: adds padding around thumb
-    background-clip: padding-box;
-  }
-  .scrollbar-thumb-slate-600::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-500;
-  }
-  .scrollbar-track-slate-700\/50::-webkit-scrollbar-track {
-    @apply bg-slate-700/50 rounded-full;
-  }
-
-  // For Firefox (add these if you need explicit Firefox scrollbar styling)
-  .scrollbar-thin {
-    scrollbar-width: thin;
-    scrollbar-color: theme('colors.slate.600') theme('colors.slate.700 / 0.5'); // thumb track
-  }
-}
-*/
