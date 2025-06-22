@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react';
 import { ArrowRight, Zap, CheckCircle, Package, Shuffle, BarChartBig } from 'lucide-react'; // Changed icons for more "tool" feel
 import AnimatedWarehouseGrid from '../components/layout/animatedWarehouseGrid'; // Import the new component
+import { useNavigate } from 'react-router-dom';
 
 export default function WarehouseLanding() {
   const [isVisible, setIsVisible] = useState(false);
+  const navigate = useNavigate();
+
+  const handleClick = () => {
+    navigate('/create-shop');
+  };
 
   useEffect(() => {
     // Staggered visibility for elements
@@ -65,17 +71,17 @@ export default function WarehouseLanding() {
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <button className="group w-full sm:w-auto px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-900 rounded-lg font-semibold text-base sm:text-lg transition-all duration-300 shadow-lg shadow-cyan-500/30 transform hover:scale-[1.03]">
-                Get Started
-                <ArrowRight className="inline-block ml-2 w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
-              </button>
-              
-              <button className="group w-full sm:w-auto px-6 py-3 border-2 border-slate-600 hover:border-cyan-500 text-slate-300 hover:text-cyan-400 rounded-lg font-semibold text-base sm:text-lg transition-all duration-300">
-                Learn More
-                 {/* <ExternalLink className="inline-block ml-2 w-4 h-4 opacity-70 group-hover:opacity-100" /> */}
-              </button>
-            </div>
+            <button
+        onClick={handleClick}
+        className="px-6 py-3 bg-blue-600 text-white rounded-2xl shadow-md hover:bg-blue-700 transition duration-200"
+      >
+        Create Your warehouse
+      </button>
+      <button
+        onClick={handleClick}
+        className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl shadow-md hover:from-purple-600 hover:to-pink-600 transition duration-200"
+      >
+try it now      </button>
 
             <div className="pt-4 sm:pt-6 space-y-2.5">
               {benefits.map((benefit, idx) => (
