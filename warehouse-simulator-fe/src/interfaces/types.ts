@@ -11,18 +11,17 @@ export interface MasterItem {
     quantity: number;
   }
   
-  export interface ShelfType { // Represents a single, logical, facing shelf
-    id: number; // Unique ID for this logical shelf
-    items: ShelfStoredItem[];
-    // row & col are now less about direct rendering and more for logical grouping if needed
-    // Their visual position is determined by the grid layout function.
-    row: number; // Could be a logical row index for data grouping
-    col: number; // Could be a logical col index for data grouping
-    maxCapacityPerShelf?: number;
-    // Properties like x, y, facing will be determined by the layout generation
-    // and might be temporarily added to a ShelfType instance when placed,
-    // or the GridCellDisplayData will hold this info.
-  }
+// In src/interfaces/types.ts or at the top of RoomLayout.tsx
+export interface ShelfType {
+  id: number;
+  items: ShelfStoredItem[];
+  row: number; // Logical grouping, might become less relevant for display
+  col: number; // Logical grouping
+  maxCapacityPerShelf?: number;
+  gridX?: number;         // X-coordinate of the shelf_block cell it's in
+  gridY?: number;         // Y-coordinate of the shelf_block cell it's in
+  placedFacing?: 'N' | 'S' | 'E' | 'W'; // The direction this shelf faces from its block
+}
   
   export interface GridCellDisplayData {
     id: string; // "x-y"
@@ -33,10 +32,12 @@ export interface MasterItem {
       shelfId: number; // ID of the logical ShelfType
       facing: 'N' | 'S' | 'E' | 'W';
     }>;
+    pathSequence?: number;         // Sequence number for this step in the path (e.g., 1, 2, 3...)
+    isPickLocation?: boolean; 
     // Visual properties
     isPath?: boolean;
     isOptimalPath?: boolean;
-    isAlternatePath?: boolean;
+    isUnoptimizedPath?: boolean; // New flag
     isStart?: boolean;
     isEnd?: boolean;
     isSelected?: boolean; // For highlighting the whole grid cell if needed

@@ -1,5 +1,6 @@
 import React from 'react';
 import type { GridCellDisplayData, ShelfType } from '../../interfaces/types'; // Adjust path
+import { Target } from 'lucide-react';
 
 interface WarehouseFloorGridProps {
   gridCells: GridCellDisplayData[][];
@@ -47,16 +48,15 @@ const WarehouseFloorGrid: React.FC<WarehouseFloorGridProps> = ({
         }}
       >
         {gridCells.flat().map((cell) => {
-          let cellBg = 'bg-slate-700/60';
+          let cellBg = 'bg-slate-700/60'; // Default for aisle
           let border = 'border-slate-600/30';
           let content = null;
-          let cellClasses = "transition-all duration-150 relative";
+          let cellClasses = "transition-all duration-150 relative flex items-center justify-center";
           
           const isCellHovered = hoveredCellId === cell.id;
           const isEntry = entryPoint && cell.x === entryPoint.x && cell.y === entryPoint.y;
           const isExit = exitPoint && cell.x === exitPoint.x && cell.y === exitPoint.y;
-
-
+          
           if (cell.type === 'shelf_block') {
             cellBg = isCellHovered ? 'bg-slate-600' : 'bg-slate-600/50';
             border = 'border-slate-500/40';
@@ -121,6 +121,77 @@ const WarehouseFloorGrid: React.FC<WarehouseFloorGridProps> = ({
           if (cell.isOptimalPath) cellBg = 'bg-gradient-to-br from-cyan-400 to-cyan-500'; 
           else if (cell.isStart && !isEntry) cellBg = 'bg-lime-400'; // Avoid overriding entry/exit color
           else if (cell.isEnd && !isExit) cellBg = 'bg-fuchsia-500';
+          if (cell.isStart) {
+            cellBg = 'bg-lime-500 animate-pulse'; // Start point color
+            border = 'border-lime-300';
+          } else if (cell.isEnd) {
+            cellBg = 'bg-fuchsia-500 animate-pulse'; // End point color
+            border = 'border-fuchsia-300';
+          } else if (cell.isOptimalPath) {
+            cellBg = 'bg-cyan-500'; // Optimal path color
+            border = 'border-cyan-300';
+          } else if (cell.isUnoptimizedPath) {
+            cellBg = 'bg-orange-500'; // Unoptimized path color
+            border = 'border-orange-300';
+          }
+ // --- PATH STYLING (Overrides base cell type if it's a path cell) ---
+ let pathSpecificContent = null;
+
+ if (cell.isUnoptimizedPath) {
+   cellBg = 'bg-orange-600/70'; // Slightly darker/different for unoptimized
+   border = 'border-orange-400/50';
+   if (cell.pathSequence) { // Display sequence for unoptimized path too if desired
+       // pathSpecificContent = <span className="text-xs text-white opacity-70">{cell.pathSequence}</span>;
+   }
+ }
+ if (cell.isOptimalPath) {
+   cellBg = 'bg-cyan-500/80'; // Make it vibrant
+   border = 'border-cyan-300/70';
+   if (cell.pathSequence) {
+       pathSpecificContent = (
+           <span className={`font-bold text-xs 
+                            ${cell.isPickLocation ? 'text-yellow-300 scale-125' : 'text-white'}
+                            relative z-10`}>
+               {cell.pathSequence}
+           </span>
+       );
+   }
+   if (cell.isPickLocation && !cell.isStart && !cell.isEnd) { // Add icon for pick stops
+       pathSpecificContent = (
+           <div className="relative flex flex-col items-center justify-center">
+               {pathSpecificContent} {/* Show sequence number */}
+               <Target className="w-2.5 h-2.5 text-yellow-300 absolute -bottom-0.5" />
+           </div>
+       );
+   }
+ }
+
+ // Start/End points override path colors for their specific cells
+ if (cell.isStart) {
+   cellBg = 'bg-lime-500 animate-pulse';
+   border = 'border-lime-300';
+   pathSpecificContent = <span className="text-xs font-bold text-black">S</span>;
+ }
+ if (cell.isEnd) {
+   cellBg = 'bg-fuchsia-500 animate-pulse';
+   border = 'border-fuchsia-300';
+   pathSpecificContent = <span className="text-xs font-bold text-white">E</span>;
+ }
+ 
+ // Entry/Exit points have highest precedence for their specific cells
+ 
+ if (isEntry) { 
+   cellBg = 'bg-green-600'; 
+   content = <div className="text-white text-[7px] sm:text-[9px] font-bold p-0.5">ENT</div>; 
+   border = 'border-green-400';
+   pathSpecificContent = null; // Entry/Exit text overrides path sequence number
+ }
+ if (isExit) { 
+   cellBg = 'bg-red-600'; 
+   content = <div className="text-white text-[7px] sm:text-[9px] font-bold p-0.5">EXT</div>; 
+   border = 'border-red-400';
+   pathSpecificContent = null;
+ }
 
 
           return (
